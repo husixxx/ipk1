@@ -26,29 +26,46 @@ IPK24_Client::IPK24_Client(int port, std::string ip, int sock_protocol){
 
     printf("Socket created\n");
 
-    // instance of server
-    this->host = gethostbyname(this->ip.c_str());
-
-    if(this->host == NULL){
-        printf("Error getting host\n");
-        exit(1);
-    }
-    printf("Host found\n");
-
-    this->server_address = {0};
-    this->server_address.sin_family = AF_INET;
-    this->server_address.sin_port = htons(this->port);
-    memcpy(&this->server_address.sin_addr.s_addr, this->host->h_addr, this->host->h_length);
-
     
-    printf("INFO: Server socket: %s : %d \n",
-        inet_ntoa(server_address.sin_addr),
-        ntohs(server_address.sin_port));
 
-    this->address = (struct sockaddr *)&this->server_address;
+        
+        // instance of server
+        this->host = gethostbyname(this->ip.c_str());
+
+        if(this->host == NULL){
+            printf("Error getting host\n");
+            exit(1);
+        }
+        printf("Host found\n");
+
+        this->server_address = {0};
+        this->server_address.sin_family = AF_INET;
+        this->server_address.sin_port = htons(this->port);
+        memcpy(&this->server_address.sin_addr.s_addr, this->host->h_addr, this->host->h_length);
+
+        if(this->sock_protocol == 2){
+            printf("INFO: Server socket: %s : %d \n",
+                inet_ntoa(server_address.sin_addr),
+                ntohs(server_address.sin_port));
+
+        }
+        this->address = (struct sockaddr *)&this->server_address;
+        
     
     printf("Client created\n");
     
+}
+
+
+void IPK24_Client::connectTCP(){
+    int address_len = sizeof(this->server_address);
+    int flags = 0;
+    int connection = connect(this->sock_fd, this->address, address_len);
+    if(connection < 0){
+        printf("Error connecting to server\n");
+        exit(1);
+    }
+    printf("Connected to server\n");
 }
 
 void IPK24_Client::closeConnection(){
@@ -56,7 +73,7 @@ void IPK24_Client::closeConnection(){
     printf("Socket closed\n");
 }
 
-void IPK24_Client::recieveData(){
+std::string IPK24_Client::recieveDataUDP(){
     int address_len = sizeof(this->server_address);
     int flags = 0;
     std::array<char, 1024> buffer{0};
@@ -67,9 +84,35 @@ void IPK24_Client::recieveData(){
     }
     printf("Data received\n");
     printf("Data: %s\n", buffer.data());
+    return buffer.data();
 }
 
-void IPK24_Client::sendData(std::string message){
+
+
+// std::string getMessage(std::string message){
+//     std::vector<std::string> kar = split(message);
+//     std::string Message = kar[0];
+
+//     switch(Message){
+//         case "AUTH":
+//             return Messages::AUTH;
+//         case "/join":
+//             // std::string msgToSend = "JOIN " + kar[1] + " AS " client. + "\r\n";
+//             return msgToSend;
+//         case "ERR":
+//             return Messages::ERR;
+//         case "BYE":
+//             return Messages::BYE;
+//         case "MSG":
+//             return Messages::MSG;
+//         case "REPLY":
+//             return Messages::REPLY;
+//     }
+    
+// }
+
+
+void IPK24_Client::sendDataUDP(std::string message){
     int address_len = sizeof(this->server_address);
     int flags = 0;
     int bytes_tx = sendto(this->sock_fd, message.c_str(), message.size(), flags, this->address, address_len);
@@ -77,32 +120,91 @@ void IPK24_Client::sendData(std::string message){
         printf("Error sending data\n");
         exit(1);
     }
-    printf("Data sent\n");
+    // printf("Data sent\n");
 }
 
-int main(int argc, char *argv[]){
-
-    if(argc != 3){
-        printf("Usage: %s <ip> <port>\n", argv[0]);
+void IPK24_Client::sendDataTCP(std::string message){
+    int flags = 0;
+    std::array<char, 1024> buffer{0};
+    int bytes_tx = write(this->sock_fd, message.c_str(), message.size());
+    
+   
+    if(bytes_tx < 0){
+        printf("Error sending data\n");
         exit(1);
     }
-    int port = std::atoi(argv[2]);
-    std::string ip = argv[1];
+    // printf("Data sent : %s \n", message.c_str());
+}
 
-    IPK24_Client client(port, ip, SOCK_DGRAM);
+void IPK24_Client::closeConnectionTCP(){
+    close(this->sock_fd);
+    printf("Socket closed\n");
+    
+}
+std::vector<std::string> split(const std::string& str){
+    std::string part;
+    std::stringstream spart(str);
 
-    std::string msg;
-    while (std::getline(std::cin, msg)){
-        client.sendData(msg);
-        
+    std::vector<std::string> parts;
+
+    while(std::getline(spart, part, ' ')){
+        parts.push_back(part);
+    }
+
+    return parts;
+}
+
+std::string join(const std::vector<std::string>& parts) {
+    std::string result;
+    for (size_t i = 0; i < parts.size(); ++i) {
+        result += parts[i];
+        if (i < parts.size() - 1)
+            result += " ";
+    }
+    return result;
+}
+
+std::string IPK24_Client::recieveDataTCP(){
+    int flags = 0;
+    std::array<char, 1024> buffer{0};
+
+    int bytes_rx = read(this->sock_fd, buffer.data(), 200);
+    if(bytes_rx < 0){
+        printf("Error receiving data\n");
+        exit(1);
+    }
+
+    // std::cout << "Data received: " << buffer.data() << std::endl;
+    return buffer.data();
+}
+
+
+void IPK24_Client::printMessage(std::string message){
+    std::vector<std::string> pieces = split(message);
+    std::string msg = pieces[0];
+    std::string possibleReply = pieces[1];
+    std::string usrName = pieces[2];
+    // print it out to the console the cpp style not printf
+    if(msg == "REPLY"){
+        pieces.erase(pieces.begin(), pieces.begin() + 3);
+    }else{
+        pieces.erase(pieces.begin(), pieces.begin() + 4);
     }
     
-    client.closeConnection();
 
-
-
+    if(msg == "MSG"){
+        std::cout << usrName + ": " << join(pieces) << std::endl;
+    }else if (msg == "ERR"){
+        std::cout << "ERROR FROM" + usrName + ": "<< join(pieces) << std::endl;
+    }else if (msg == "REPLY"){
+        if(possibleReply == "OK"){
+            std::cout << "Succes: " << join(pieces) << std::endl;
+        }else{
+            std::cout << "Failure: " << join(pieces) << std::endl;
+        }
+    }
     
     
-    return 0;
-
 }
+
+
