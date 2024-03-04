@@ -18,6 +18,8 @@
 #include <vector>
 #include <map>
 #include <thread>
+#include <sstream>
+
 
 
 enum class Client_State{
@@ -40,22 +42,45 @@ enum class Messages {
 
 
 
-
-
 class IPK24_Client{
 
     public:
         IPK24_Client(int port, std::string ip, int sock_protocol);
-        void sendData(std::string message);
-        void recieveData();
+        void sendDataUDP(std::string message);
+        void connectTCP();
+        std::string recieveDataUDP();
         void closeConnection();
+
+        void sendDataTCP(std::string message);
+        void sendData(std::string message){
+            this->sock_protocol == SOCK_DGRAM ? sendDataUDP(message) : sendDataTCP(message);
+            
+        }
+
+        std::string recieveDataTCP();
+        void printMessage(std::string message);
+        void closeConnectionTCP();
+        std::string reply;
+        void receiveData()
+        {
+
+            this->reply = (this->sock_protocol == SOCK_DGRAM ? recieveDataUDP() : recieveDataTCP());
+            printMessage(this->reply);
+            
+
+            
+        }
+        std::string message;
+        Client_State state;
+        std::string displayName;
+        int sock_fd;
+        
         
     
     private:
 
 
-        Client_State state;
-        int sock_fd;
+        
         int sock_protocol;
         int port;
         struct sockaddr *address;
@@ -64,6 +89,7 @@ class IPK24_Client{
         std::string ip;
     
 };
+
 
 
 #endif // clientHPP
