@@ -7,6 +7,7 @@
 #include <string.h>
 #include <sys/socket.h>
 #include <sys/types.h>
+
 #include <netdb.h>
 #include <arpa/inet.h>
 #include <netinet/in.h>
@@ -19,6 +20,7 @@
 #include <map>
 #include <thread>
 #include <sstream>
+#include <csignal>
 
 
 
@@ -45,17 +47,23 @@ enum class Messages {
 class IPK24_Client{
 
     public:
+
+        
+
+
         IPK24_Client(int port, std::string ip, int sock_protocol);
-        void sendDataUDP(std::string message);
+        
+        void sendDataUDP(std::vector<uint8_t> message);
         void connectTCP();
         std::string recieveDataUDP();
         void closeConnection();
 
         void sendDataTCP(std::string message);
         void sendData(std::string message){
-            this->sock_protocol == SOCK_DGRAM ? sendDataUDP(message) : sendDataTCP(message);
+            sendDataTCP(message);
             
         }
+
 
         std::string recieveDataTCP();
         void printMessage(std::string message);
@@ -74,6 +82,9 @@ class IPK24_Client{
         Client_State state;
         std::string displayName;
         int sock_fd;
+        int sock_protocol;
+        struct sockaddr *dyn_address;
+        
         
         
     
@@ -81,7 +92,6 @@ class IPK24_Client{
 
 
         
-        int sock_protocol;
         int port;
         struct sockaddr *address;
         struct hostent* host;

@@ -30,9 +30,45 @@ void stateStart(IPK24_Client& client, std::vector<std::string> inputParts, std::
             client.state = Client_State::error;
             return;
         }
-        client.message = "AUTH " + userName + " AS " + client.displayName + " USING " + secret + "\r\n";
-        client.sendData(client.message);
-        client.receiveData();
+        // client.message = "1 " + userName + " " + client.displayName + " " + secret + "\r\n";
+
+        if(client.sock_protocol == SOCK_STREAM){
+            client.message = "AUTH " + userName + " AS " + client.displayName + " USING " + secret + "\r\n";
+            client.sendData(client.message);
+            client.receiveData();
+            client.state = Client_State::auth;
+            return;
+        }
+        std::vector<uint8_t> message;
+
+    // Přidání typu zprávy
+        message.push_back(0x02); // AUTH typ
+
+        // Přidání MessageID - pro příklad použijeme 0x0001, ve skutečné implementaci by to mělo být unikátní
+        
+        uint16_t messageId = htons(0x0001); // Předpokládáme, že messageId je 16-bitové číslo
+        message.push_back(static_cast<uint8_t>(messageId >> 8)); // Horní bajt
+        message.push_back(static_cast<uint8_t>(messageId & 0xFF)); // Dolní bajt
+
+        // Přidání Username
+        for (char c : userName) {
+           message.push_back(static_cast<uint8_t>(c));
+        }
+        message.push_back(0x00); // Nulový bajt na konci
+
+        // Přidání DisplayName
+        for (char c : client.displayName) {
+            message.push_back(static_cast<uint8_t>(c));
+        }
+        message.push_back(0x00); // Nulový bajt na konci
+
+        // Přidání Secret
+        for (char c : secret) {
+            message.push_back(static_cast<uint8_t>(c));
+        }
+        message.push_back(0x00); // Nulový bajt na konci
+        client.sendDataUDP(message);
+        client.recieveDataUDP();
         client.state = Client_State::auth;
     }else{
 
@@ -89,7 +125,12 @@ void caseAuth(IPK24_Client& client){
     }   
 
 
+
+
+
 int main(int argc, char *argv[]){
+
+    // Ctrl+C handler
 
     
     std::string userName;
@@ -138,6 +179,7 @@ int main(int argc, char *argv[]){
     
 
     IPK24_Client client(port, ip, protocol == "tcp" ? SOCK_STREAM : SOCK_DGRAM);
+    // signal(SIGINT, signalHandler(client));
     
     client.connectTCP();
 
@@ -153,6 +195,7 @@ int main(int argc, char *argv[]){
     int activity;
     while(true){
         // print the state
+        std::cout << "State: " << static_cast<int>(client.state) << std::endl;
         switch ( client.state )
         {
             case(Client_State::start):
@@ -169,20 +212,26 @@ int main(int argc, char *argv[]){
                 
 
             case( Client_State::open ):
+
+                    
                     FD_ZERO(&readfds);
                     FD_SET(client.sock_fd, &readfds);
                     FD_SET(STDIN_FILENO, &readfds);
                     tv.tv_sec = 0;
                     tv.tv_usec = 0;
+                    //flags
 
                     activity = select(std::max(client.sock_fd, STDIN_FILENO) + 1, &readfds, NULL, NULL, &tv);
 
                     if(activity < 0){
-                        printf("Error in select\n");
+                        std::cerr << "Select error" << std::endl;
                         exit(1);
                     }
 
+
+                    // first check if there is something to read from the server
                     if(FD_ISSET(client.sock_fd, &readfds)){
+                        // read data and validate
                         client.receiveData();
                         reply = split(client.reply);
 
@@ -204,11 +253,10 @@ int main(int argc, char *argv[]){
                             break;
                         }
                         
-                        
-
-                    
                     }
+                    // then check if there is something to read from the user
                     if(FD_ISSET(STDIN_FILENO, &readfds)){
+                        // read, split and validate user input
                         std::getline(std::cin, client.message);
                         inputParts = split(client.message);
                         command = inputParts[0];
@@ -228,31 +276,25 @@ int main(int argc, char *argv[]){
                             std::cerr << "You are already authenticated !" << std::endl;
                             break;
                         }else if(command[0] != '/'){
-                            
+                            // not command, must be message
                             joinedInputMsg = join(inputParts);
                             client.message = "MSG FROM " + client.displayName + " IS " + joinedInputMsg + "\r\n";
                             client.sendData(client.message);
                             
                             break;
 
+                        }else{
+                            std::cerr << "Invalid command" << std::endl;
+                            break;
                         }
                         
                     }
-                    
                 
-                
-                // command = kar[0];
-                // if(command == "/join"){
-                //     client.message = "JOIN " + kar[1] + " AS " + client.displayName + "\r\n";
-                //     client.sendData(client.message);
-                //     client.receiveData();
-                //     break;
-                // }
                 break;
             
         case( Client_State::end ):
             //print success
-            printf("Success\n");
+            std::cout << "Success" << std::endl;
             client.closeConnectionTCP();
             exit(0);
         case (Client_State::error):

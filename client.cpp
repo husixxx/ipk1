@@ -73,16 +73,27 @@ void IPK24_Client::closeConnection(){
     printf("Socket closed\n");
 }
 
+
+
 std::string IPK24_Client::recieveDataUDP(){
-    int address_len = sizeof(this->server_address);
+    sockaddr_in sender_address = {0};
+    sender_address.sin_family = AF_INET;
+    sender_address.sin_port = htons(0);
+    socklen_t address_len2 = sizeof(sender_address);
+
+    socklen_t address_len = sizeof(this->server_address);
     int flags = 0;
+    printf("AWOJ");
     std::array<char, 1024> buffer{0};
-    int bytes_rx = recvfrom(this->sock_fd, buffer.data(), 1024, flags, this->address, (socklen_t*)&address_len);
+    int bytes_rx = recvfrom(this->sock_fd, buffer.data(), 1024, flags,(struct sockaddr*)&sender_address, &address_len2);
     if(bytes_rx == -1){
         printf("Error receiving data\n");
         exit(1);
     }
-    printf("Data received\n");
+    sockaddr_in *sender_addr_in = (sockaddr_in*)&sender_address; // Přetypování pro práci s IPv4
+    int sender_port = ntohs(sender_addr_in->sin_port); // Získání portu odesílatele
+    
+    printf("Data received from port: %d\n", sender_port);
     printf("Data: %s\n", buffer.data());
     return buffer.data();
 }
@@ -112,15 +123,15 @@ std::string IPK24_Client::recieveDataUDP(){
 // }
 
 
-void IPK24_Client::sendDataUDP(std::string message){
+void IPK24_Client::sendDataUDP(std::vector<uint8_t> message){
     int address_len = sizeof(this->server_address);
     int flags = 0;
-    int bytes_tx = sendto(this->sock_fd, message.c_str(), message.size(), flags, this->address, address_len);
+    int bytes_tx = sendto(this->sock_fd, message.data(), message.size(), flags, this->address, address_len);
     if(bytes_tx == -1){
         printf("Error sending data\n");
         exit(1);
     }
-    // printf("Data sent\n");
+    printf("Data sent\n");
 }
 
 void IPK24_Client::sendDataTCP(std::string message){
