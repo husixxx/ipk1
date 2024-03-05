@@ -1,5 +1,17 @@
 #include "client.cpp"
 
+
+void print_help() {
+    std::cout << "Usage: program_name [options]\n"
+              << "Options:\n"
+              << " -t <tcp|udp>                Transport protocol used for connection\n"
+              << " -s <IP address|hostname>    Server IP or hostname\n"
+              << " -p <port>                   Server port\n"
+              << " -d <timeout>                UDP confirmation timeout\n"
+              << " -r <retransmissions>        Maximum number of UDP retransmissions\n"
+              << " -h                          Prints this help output and exits\n";
+}
+
 void stateStart(IPK24_Client& client, std::vector<std::string> inputParts, std::string command){
     if(command == "/auth"){
         
@@ -12,7 +24,7 @@ void stateStart(IPK24_Client& client, std::vector<std::string> inputParts, std::
         std::string userName = inputParts[1];
         client.displayName = inputParts[3]; 
         std::string secret = inputParts[2];
-
+ 
         if( userName.empty() || client.displayName.empty() || secret.empty() ){
             std::cerr << "Invalid input bro" << std::endl;
             client.state = Client_State::error;
@@ -82,18 +94,53 @@ int main(int argc, char *argv[]){
     
     std::string userName;
     std::string secret;
+    uint16_t port;
+    uint16_t timeout;
+    uint8_t retrans = 3;
+    std::string ip;
+    std::string protocol;
+    int option;
+    while((option = getopt(argc , argv, "t:s:p:d:r:h")) != -1){
+        switch(option){
 
-    if(argc != 3){
-        printf("Usage: %s <ip> <port>\n", argv[0]);
-        exit(1);
+            case 't':
+                protocol = optarg;
+                if (protocol != "tcp" && protocol != "udp") {
+                    std::cerr << "Invalid protocol. Use 'tcp' or 'udp'.\n";
+                    return 1;
+                }
+                break;
+            case 's':
+                ip = optarg;
+                break;
+            case 'p':
+                port = static_cast<uint16_t>(std::stoi(optarg));
+                break;
+            case 'd':
+                timeout = static_cast<uint16_t>(std::stoi(optarg));
+                break;
+            case 'r':
+                retrans = static_cast<uint8_t>(std::stoi(optarg));
+                break;
+            case 'h':
+                print_help();
+                return 0;
+            case '?':
+                // getopt automatically prints an error message for unrecognized option characters or missing option arguments
+                return 1;
+            default:
+                print_help();
+                return 1;
+        }
     }
-    int port = std::atoi(argv[2]);
-    std::string ip = argv[1];
+    
+    
     
 
-    IPK24_Client client(port, ip, SOCK_STREAM);
+    IPK24_Client client(port, ip, protocol == "tcp" ? SOCK_STREAM : SOCK_DGRAM);
     
     client.connectTCP();
+
     fd_set readfds;
     struct timeval tv;
     
