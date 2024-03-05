@@ -43,6 +43,7 @@ IPK24_Client::IPK24_Client(int port, std::string ip, int sock_protocol){
         this->server_address.sin_port = htons(this->port);
         memcpy(&this->server_address.sin_addr.s_addr, this->host->h_addr, this->host->h_length);
 
+        bind(this->sock_fd, (struct sockaddr *)&this->server_address, sizeof(this->server_address));
         if(this->sock_protocol == 2){
             printf("INFO: Server socket: %s : %d \n",
                 inet_ntoa(server_address.sin_addr),
@@ -75,28 +76,30 @@ void IPK24_Client::closeConnection(){
 
 
 
-std::string IPK24_Client::recieveDataUDP(){
-    sockaddr_in sender_address = {0};
-    sender_address.sin_family = AF_INET;
-    sender_address.sin_port = htons(0);
-    socklen_t address_len2 = sizeof(sender_address);
-
-    socklen_t address_len = sizeof(this->server_address);
-    int flags = 0;
-    printf("AWOJ");
+std::string IPK24_Client::recieveDataUDP() {
+     // Struktura pro uložení adresy odesílatele
+     // Velikost struktury adresy odesílatele
+    socklen_t address_len = sizeof(this->address);
     std::array<char, 1024> buffer{0};
-    int bytes_rx = recvfrom(this->sock_fd, buffer.data(), 1024, flags,(struct sockaddr*)&sender_address, &address_len2);
-    if(bytes_rx == -1){
+    int flags = 0;
+    printf("AWOJ\n");
+
+    // Přijetí dat a uložení adresy odesílatele do sender_address
+    int bytes_rx = recvfrom(this->sock_fd, buffer.data(), buffer.size(), flags, this->address, &address_len);
+    
+    if (bytes_rx == -1) {
         printf("Error receiving data\n");
         exit(1);
     }
-    sockaddr_in *sender_addr_in = (sockaddr_in*)&sender_address; // Přetypování pro práci s IPv4
-    int sender_port = ntohs(sender_addr_in->sin_port); // Získání portu odesílatele
+
+    // Získání portu odesílatele
+    int sender_port = ntohs(this->server_address.sin_port);
     
     printf("Data received from port: %d\n", sender_port);
     printf("Data: %s\n", buffer.data());
-    return buffer.data();
+    return std::string(buffer.data(), bytes_rx);
 }
+
 
 
 
