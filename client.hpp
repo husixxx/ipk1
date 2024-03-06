@@ -63,8 +63,9 @@ class IPK24_Client{
             sendDataTCP(message);
             
         }
+        void printUDPmessagge(std::string message);
 
-
+        bool receiveConfirmation();
         std::string recieveDataTCP();
         void printMessage(std::string message);
         void closeConnectionTCP();
@@ -72,7 +73,7 @@ class IPK24_Client{
         void receiveData()
         {
 
-            this->reply = (this->sock_protocol == SOCK_DGRAM ? recieveDataUDP() : recieveDataTCP());
+            this->reply = recieveDataTCP();
             printMessage(this->reply);
             
 
@@ -84,7 +85,7 @@ class IPK24_Client{
         int sock_fd;
         int sock_protocol;
         struct sockaddr *dyn_address;
-        
+        uint16_t messageID;
         
         
     

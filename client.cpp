@@ -15,6 +15,7 @@ IPK24_Client::IPK24_Client(int port, std::string ip, int sock_protocol){
     std::array<char, 1024> buffer{0};
     this->state = Client_State::start;
 
+   this->messageID = 0;
     
     // create a new socket
     this->sock_fd = socket(AF_INET, this->sock_protocol , 0);
@@ -43,7 +44,7 @@ IPK24_Client::IPK24_Client(int port, std::string ip, int sock_protocol){
         this->server_address.sin_port = htons(this->port);
         memcpy(&this->server_address.sin_addr.s_addr, this->host->h_addr, this->host->h_length);
 
-        bind(this->sock_fd, (struct sockaddr *)&this->server_address, sizeof(this->server_address));
+        // bind(this->sock_fd, (struct sockaddr *)&this->server_address, sizeof(this->server_address));
         if(this->sock_protocol == 2){
             printf("INFO: Server socket: %s : %d \n",
                 inet_ntoa(server_address.sin_addr),
@@ -72,33 +73,69 @@ void IPK24_Client::connectTCP(){
 void IPK24_Client::closeConnection(){
     close(this->sock_fd);
     printf("Socket closed\n");
+    
 }
 
 
 
 std::string IPK24_Client::recieveDataUDP() {
-     // Struktura pro uložení adresy odesílatele
-     // Velikost struktury adresy odesílatele
-    socklen_t address_len = sizeof(this->address);
+    // Zde nepotřebujeme inicializovat sockaddr_in pro místní adresu, protože nebudeme volat bind
+    sockaddr_in sender_address;
+    socklen_t sender_address_len = sizeof(sender_address);
     std::array<char, 1024> buffer{0};
-    int flags = 0;
-    printf("AWOJ\n");
 
-    // Přijetí dat a uložení adresy odesílatele do sender_address
-    int bytes_rx = recvfrom(this->sock_fd, buffer.data(), buffer.size(), flags, this->address, &address_len);
-    
+    // Přijetí dat
+    int bytes_rx = recvfrom(this->sock_fd, buffer.data(), buffer.size(), 0, (struct sockaddr*)&sender_address, &sender_address_len);
     if (bytes_rx == -1) {
-        printf("Error receiving data\n");
-        exit(1);
+        perror("Error receiving data");
+        return "";
     }
 
     // Získání portu odesílatele
-    int sender_port = ntohs(this->server_address.sin_port);
+    int sender_port = ntohs(sender_address.sin_port);
+    this->server_address = sender_address;
+    this->address = (struct sockaddr *)&this->server_address;
+    // Odpověď serveru byla přijata, vytvoříme nový socket a nasloucháme na portu odesílatele
+    
+    // printf("Message Type: %d\n", type);
+    // printf("Message ID: %d\n", messageID);
+    // printf("Content: %s\n", content.c_str());
+
+    // Nastavíme adresu klienta na nulu a port na port odesílatele
+    
+    
+    // Port odesílatele
+
+    
     
     printf("Data received from port: %d\n", sender_port);
-    printf("Data: %s\n", buffer.data());
+    this->printUDPmessagge(std::string(buffer.data(), bytes_rx));
+
     return std::string(buffer.data(), bytes_rx);
 }
+
+
+void IPK24_Client::printUDPmessagge(std::string message){
+    
+
+    uint8_t type = static_cast<uint8_t>(message[0]);
+    switch(type){
+        case 0x01:
+            std::string messageContents = message.substr(5); // Přeskočit prvních 5 bajtů (1 byte message type + 2 bytes MessageID + 1 byte Result + 2 bytes Ref_MessageID)
+            size_t nullTerminatorPos = messageContents.find('\0');
+            if (nullTerminatorPos != std::string::npos) {
+                messageContents = messageContents.substr(0, nullTerminatorPos); // Extrahovat pouze do nulového byte
+            } else {
+                std::cerr << "ERR: MessageContents not properly terminated with null byte.\n";
+                return;
+            }
+
+            std::cout << "Success: " << messageContents << "\n";
+            break;
+    }
+    
+}
+
 
 
 
@@ -125,12 +162,39 @@ std::string IPK24_Client::recieveDataUDP() {
     
 // }
 
+bool IPK24_Client::receiveConfirmation(){
+    fd_set readfds;
+    FD_ZERO(&readfds);
+    FD_SET(this->sock_fd, &readfds);
 
+    struct timeval tv;
+    tv.tv_sec = 0;
+    tv.tv_usec = 250 * 1000; // Timeout for select
+
+    for(int i = 0; i < 3 ; i++){
+        int activity = select(this->sock_fd + 1, &readfds, NULL, NULL, &tv);
+        if (activity < 0) {
+            // Handle error
+        } else if (activity == 0) {
+            continue;
+        } else {
+            if (FD_ISSET(this->sock_fd, &readfds)) {
+                // We have received data
+                // Read the confirmation, validate it, and return true if it matches messageId
+                std::string confirmation = recieveDataUDP();
+                return true;
+            }
+        }
+    }
+
+    return false;
+}
 void IPK24_Client::sendDataUDP(std::vector<uint8_t> message){
     int address_len = sizeof(this->server_address);
     int flags = 0;
     int bytes_tx = sendto(this->sock_fd, message.data(), message.size(), flags, this->address, address_len);
-    if(bytes_tx == -1){
+    this->messageID += 0x0001;
+    if(bytes_tx < 0){
         printf("Error sending data\n");
         exit(1);
     }
