@@ -64,12 +64,12 @@ class IPK24_Client{
             
         }
         void printUDPmessagge(std::string message);
-
-        bool receiveConfirmation();
+        std::string receiveReply(uint16_t expectedMessageID);
+        bool receiveConfirmation(uint16_t expectedMessageID);
         std::string recieveDataTCP();
         void printMessage(std::string message);
         void closeConnectionTCP();
-        std::string reply;
+        std::string reply; 
         void receiveData()
         {
 

@@ -117,12 +117,14 @@ std::string IPK24_Client::recieveDataUDP() {
 
 void IPK24_Client::printUDPmessagge(std::string message){
     
-
+    size_t nullTerminatorPos;
     uint8_t type = static_cast<uint8_t>(message[0]);
+    std::string messageContents;
     switch(type){
+
         case 0x01:
-            std::string messageContents = message.substr(5); // Přeskočit prvních 5 bajtů (1 byte message type + 2 bytes MessageID + 1 byte Result + 2 bytes Ref_MessageID)
-            size_t nullTerminatorPos = messageContents.find('\0');
+            messageContents = message.substr(5); // Přeskočit prvních 5 bajtů (1 byte message type + 2 bytes MessageID + 1 byte Result + 2 bytes Ref_MessageID)
+            nullTerminatorPos = messageContents.find('\0');
             if (nullTerminatorPos != std::string::npos) {
                 messageContents = messageContents.substr(0, nullTerminatorPos); // Extrahovat pouze do nulového byte
             } else {
@@ -132,6 +134,34 @@ void IPK24_Client::printUDPmessagge(std::string message){
 
             std::cout << "Success: " << messageContents << "\n";
             break;
+
+        case 0x04:
+
+            std::string displayName = message.substr(3);
+            nullTerminatorPos = displayName.find('\0');
+            if (nullTerminatorPos != std::string::npos) {
+                displayName = displayName.substr(0, nullTerminatorPos); // Extrahovat pouze do nulového byte
+            } else {
+                std::cerr << "ERR: MessageContents not properly terminated with null byte.\n";
+                return;
+            }
+            
+            std::string content = message.substr(3 + displayName.size() + 1);
+            size_t nullTerminatorPos2 = content.find('\0');
+            if (nullTerminatorPos2 != std::string::npos) {
+                content = content.substr(0, nullTerminatorPos2); // Extrahovat pouze do nulového byte
+            } else {
+                std::cerr << "ERR: MessageContents not properly terminated with null byte.\n";
+                return;
+            }
+
+
+            std::cout << displayName << ": " << content << "\n";
+            break;
+
+
+
+                
     }
     
 }
@@ -162,14 +192,60 @@ void IPK24_Client::printUDPmessagge(std::string message){
     
 // }
 
-bool IPK24_Client::receiveConfirmation(){
+// std::string IPK24_Client::receiveReply(uint16_t expectedMessageID){
+//     fd_set readfds;
+//     FD_ZERO(&readfds);
+//     FD_SET(this->sock_fd, &readfds);
+
+//     struct timeval tv;
+//     tv.tv_sec = 0;
+//     tv.tv_usec = 250 * 1000; // Timeout for select
+
+//     uint16_t receivedMessageID;
+//     uint8_t messageType;
+//     bool success = false;
+
+    
+//     int activity = select(this->sock_fd + 1, &readfds, NULL, NULL, &tv);
+//     if (activity < 0) {
+//         // Handle select error
+//         perror("select error");
+//         break;
+//     } else if (activity == 0) {
+//         // Timeout, no data received
+//         continue;
+//     } else {
+//         if (FD_ISSET(this->sock_fd, &readfds)) {
+//             // We have received data
+//             std::string response = recieveDataUDP();
+//             uint8_t type = static_cast<uint8_t>(response[0]);
+//             std::cout << "Type: " << type << std::endl;
+//             if(type == 0x01){
+//                 uint16_t messageID = static_cast<uint16_t>(response[1]) << 8 | static_cast<uint16_t>(response[2]);
+//                 std::vector<uint8_t> message2;
+//                 message2.push_back(0x00);
+//                 message2.push_back(static_cast<uint8_t>(messageID >> 8)); // Horní bajt
+//                 message2.push_back(static_cast<uint8_t>(messageID & 0xFF)); // Dolní bajt
+//                 this->sendDataUDP(message2);
+//             }else{
+//                 continue;
+            
+//             }
+//         }
+//     }
+    
+
+//     return "";
+// }
+
+bool IPK24_Client::receiveConfirmation(uint16_t expectedMessageID){
     fd_set readfds;
     FD_ZERO(&readfds);
     FD_SET(this->sock_fd, &readfds);
 
     struct timeval tv;
     tv.tv_sec = 0;
-    tv.tv_usec = 250 * 1000; // Timeout for select
+    tv.tv_usec = 250; // Timeout for select
 
     for(int i = 0; i < 3 ; i++){
         int activity = select(this->sock_fd + 1, &readfds, NULL, NULL, &tv);
@@ -181,8 +257,24 @@ bool IPK24_Client::receiveConfirmation(){
             if (FD_ISSET(this->sock_fd, &readfds)) {
                 // We have received data
                 // Read the confirmation, validate it, and return true if it matches messageId
-                std::string confirmation = recieveDataUDP();
-                return true;
+                std::string response = recieveDataUDP();
+                uint8_t type = static_cast<uint8_t>(response[0]);
+                if(type == 0x00){
+
+                    
+                    uint16_t messageID = static_cast<uint16_t>(response[1]) << 8 | static_cast<uint16_t>(response[2]);
+                    if(messageID == expectedMessageID){
+                        return true;
+                    }else{
+                        continue;
+                    }
+                if(type == 0x01){
+                    std::cout << "Type KOKOT: " << type << std::endl;
+                }
+                    
+                }else{
+                    continue;
+                }
             }
         }
     }
