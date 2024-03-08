@@ -1,4 +1,12 @@
 #include "client.cpp"
+
+bool sigInt = false;
+
+void signalHandler(int signum) {
+    exit(4);
+    sigInt = true;
+}
+
 void handleIncome(IPK24_Client& client){
     std::string response = client.recieveDataUDP();
     uint8_t type = static_cast<uint8_t>(response[0]);
@@ -239,6 +247,7 @@ int main(int argc, char *argv[]){
     IPK24_Client client(port, ip, protocol == "tcp" ? SOCK_STREAM : SOCK_DGRAM);
     // signal(SIGINT, signalHandler(client));
     
+    signal(SIGINT, signalHandler);
     // client.connectTCP();
 
     fd_set readfds;
@@ -253,9 +262,14 @@ int main(int argc, char *argv[]){
     int activity;
     int i = 0;
     while(true){
+
+        if(sigInt){
+            client.closeConnectionTCP();
+            exit(0);
+        }
         
         // print the state
-        std::cout << "State: " << static_cast<int>(client.state) << std::endl;
+        //std::cout << "State: " << static_cast<int>(client.state) << std::endl;
         switch ( client.state )
 
         {   
@@ -326,7 +340,7 @@ int main(int argc, char *argv[]){
                         }else{
                             
                             handleIncome(client);
-                            std::cout << "Success" << std::endl;
+                            //std::cout << "s" << std::endl;
                             client.state = Client_State::open;
                             break;
                             

@@ -76,6 +76,13 @@ void IPK24_Client::closeConnection(){
     
 }
 
+void IPK24_Client::closeConnectionUDP(){
+    this->sendData("BYE\r\n");
+    this->receiveConfirmation(this->messageID - 1);
+    close(this->sock_fd);
+    printf("Socket closed\n");
+    
+}
 
 
 std::string IPK24_Client::recieveDataUDP() {
@@ -108,7 +115,7 @@ std::string IPK24_Client::recieveDataUDP() {
 
     
     
-    printf("Data received from port: %d\n", sender_port);
+   // printf("Data received from port: %d\n", sender_port);
     this->printUDPmessagge(std::string(buffer.data(), bytes_rx));
 
     return std::string(buffer.data(), bytes_rx);
@@ -290,7 +297,7 @@ void IPK24_Client::sendDataUDP(std::vector<uint8_t> message){
         printf("Error sending data\n");
         exit(1);
     }
-    printf("Data sent\n");
+//    printf("Data sent\n");
 }
 
 void IPK24_Client::sendDataTCP(std::string message){

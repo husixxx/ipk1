@@ -69,6 +69,7 @@ class IPK24_Client{
         std::string recieveDataTCP();
         void printMessage(std::string message);
         void closeConnectionTCP();
+        void closeConnectionUDP();
         std::string reply; 
         void receiveData()
         {
