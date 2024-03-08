@@ -39,24 +39,64 @@ void print_help() {
               << " -h                          Prints this help output and exits\n";
 }
 
+
+std::vector<std::string> parseInput(std::vector<std::string> inputParts) {
+    std::vector<std::string> parsedInput;
+
+    // Předpokládáme, že vstup má správný formát a dostatečný počet částí
+    if (inputParts.size() < 4) {
+        return parsedInput; // Vrací prázdný vektor, pokud nejsou všechny části přítomny
+    }
+
+    std::string userName = inputParts[1];
+    std::string secret = inputParts[2];
+    std::string displayName = inputParts[3]; 
+    // MessageContent není součástí inputParts v tvém příkladu
+
+    // Regex pro validaci
+    std::regex userAndChannelRegex("^[A-Za-z0-9\\-]{1,20}$"); // Pro Username a ChannelID
+    std::regex secretRegex("^[A-Za-z0-9\\-]{1,128}$"); // Pro Secret
+    std::regex displayNameRegex("^[\x21-\x7E]{1,20}$"); // Pro DisplayName
+
+    // Kontrola Username a ChannelID
+    if (!std::regex_match(userName, userAndChannelRegex)) {
+        exit(10);
+        return parsedInput; // Chybný vstup
+    }
+
+    // Kontrola Secret
+    if (!std::regex_match(secret, secretRegex)) {
+        exit(10);
+        return parsedInput; // Chybný vstup
+    }
+
+    // Kontrola DisplayName
+    if (!std::regex_match(displayName, displayNameRegex)) {
+        exit(10);
+        return parsedInput; // Chybný vstup
+    }
+
+    // Všechny kontroly prošly, přidáme validní hodnoty do parsedInput
+    parsedInput.push_back(userName);
+    parsedInput.push_back(secret);
+    parsedInput.push_back(displayName);
+    // Přidání MessageContent by vyžadovalo další parametr/input
+
+    return parsedInput;
+}
 void stateStart(IPK24_Client& client, std::vector<std::string> inputParts, std::string command){
     if(command == "/auth"){
         
-        if(inputParts.size() != 4){
+        std::vector<std::string> parsedParts = parseInput(inputParts);
+        if(parsedParts.empty()){
             std::cerr << "Invalid input" << std::endl;
             client.state = Client_State::error;
             return;
         }
-        
-        std::string userName = inputParts[1];
-        client.displayName = inputParts[3]; 
-        std::string secret = inputParts[2];
- 
-        if( userName.empty() || client.displayName.empty() || secret.empty() ){
-            std::cerr << "Invalid input bro" << std::endl;
-            client.state = Client_State::error;
-            return;
-        }
+        std::string userName = parsedParts[0];
+        client.displayName = parsedParts[2]; 
+        std::string secret = parsedParts[1];
+
         // client.message = "1 " + userName + " " + client.displayName + " " + secret + "\r\n";
 
         if(client.sock_protocol == SOCK_STREAM){
@@ -99,6 +139,8 @@ void stateStart(IPK24_Client& client, std::vector<std::string> inputParts, std::
         client.sendDataUDP(message);
         client.state = Client_State::auth;
         // client.state = Client_State::auth;
+
+
     }else{
 
         printf("Error\n");
@@ -392,23 +434,29 @@ int main(int argc, char *argv[]){
                                 client.state = Client_State::open;
                             }
                             break;
-                        }else if (command == "/rename"){
+                        }
+                        else if (command == "/rename"){
                             client.displayName = inputParts[1];
                             break;
-                        }else if(command == "/help"){
+                        }
+                        else if(command == "/help"){
                             std::cout << "Commands: /join, /rename, /auth, /help" << std::endl;
                             break;
-                        }else if(command == "/auth"){
+                        }
+                        else if(command == "/auth"){
                             std::cerr << "You are already authenticated !" << std::endl;
+                         
                             break;
-                        }else if(command[0] != '/'){
+                        }
+                        else if(command[0] != '/'){
                             // not command, must be message
                             if(protocol == "tcp"){
 
                                 joinedInputMsg = join(inputParts);
                                 client.message = "MSG FROM " + client.displayName + " IS " + joinedInputMsg + "\r\n";
                                 client.sendData(client.message);
-                            }else{
+                            }
+                            else{
                                 std::vector<uint8_t> message;
                                 uint8_t refID = client.messageID;
                                 message.push_back(0x04); // MSG typ

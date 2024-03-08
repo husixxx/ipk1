@@ -122,6 +122,8 @@ std::string IPK24_Client::recieveDataUDP() {
 }
 
 
+
+
 void IPK24_Client::printUDPmessagge(std::string message){
     
     size_t nullTerminatorPos;
@@ -172,6 +174,10 @@ void IPK24_Client::printUDPmessagge(std::string message){
     }
     
 }
+
+
+
+
 
 
 
@@ -385,3 +391,29 @@ void IPK24_Client::printMessage(std::string message){
 }
 
 
+
+void IPK24_Client::sendMessage(std::vector<std::string> inputParts){
+    if(this->sock_protocol == SOCK_STREAM){
+
+        std::string joinedInputMsg = join(inputParts);
+        this->message = "MSG FROM " + this->displayName + " IS " + joinedInputMsg + "\r\n";
+        this->sendData(this->message);
+    }
+    else{
+        std::vector<uint8_t> message;
+        uint8_t refID = this->messageID;
+        message.push_back(0x04); // MSG typ
+        message.push_back(static_cast<uint8_t>(this->messageID >> 8)); // Horní bajt
+        message.push_back(static_cast<uint8_t>(this->messageID & 0xFF)); // Dolní bajt
+        for (char c : this->displayName) {
+            message.push_back(static_cast<uint8_t>(c));
+        }
+        message.push_back(0x00); // Nulový bajt na konci
+        for (char c : join(inputParts)) {
+            message.push_back(static_cast<uint8_t>(c));
+        }
+        message.push_back(0x00); // Nulový bajt na konci
+        this->sendDataUDP(message);
+        this->receiveConfirmation(refID); // confirm
+    }
+}

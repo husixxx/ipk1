@@ -21,6 +21,7 @@
 #include <thread>
 #include <sstream>
 #include <csignal>
+#include <regex>
 
 
 
@@ -70,7 +71,8 @@ class IPK24_Client{
         void printMessage(std::string message);
         void closeConnectionTCP();
         void closeConnectionUDP();
-        std::string reply; 
+        std::string reply;
+        void sendMessage(std::vector<std::string> inputParts);
         void receiveData()
         {
 
