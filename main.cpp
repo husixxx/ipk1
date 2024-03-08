@@ -1,5 +1,24 @@
 #include "client.cpp"
+void handleIncome(IPK24_Client& client){
+    std::string response = client.recieveDataUDP();
+    uint8_t type = static_cast<uint8_t>(response[0]);
+    uint16_t messageID = static_cast<uint16_t>(response[1]) << 8 | static_cast<uint16_t>(response[2]);
+    if(type == 0x04){
+        std::vector<uint8_t> message;
+        message.push_back(0x00);
+        message.push_back(static_cast<uint8_t>(messageID >> 8)); // Horní bajt
+        message.push_back(static_cast<uint8_t>(messageID & 0xFF)); // Dolní bajt
+        client.sendDataUDP(message);
+    }else if(type == 0x01){
+        
+        std::vector<uint8_t> message2;
+        message2.push_back(0x00);
+        message2.push_back(static_cast<uint8_t>(messageID >> 8)); // Horní bajt
+        message2.push_back(static_cast<uint8_t>(messageID & 0xFF)); // Dolní bajt
+        client.sendDataUDP(message2);
 
+    }
+}
 
 void print_help() {
     std::cout << "Usage: program_name [options]\n"
@@ -99,7 +118,10 @@ void caseAuth(IPK24_Client& client){
     }
     if( reply[0] == "REPLY" && reply[1] == "NOK"){
 
-        std::getline(std::cin, client.message);
+        if(!std::getline(std::cin, client.message)){
+            exit(23); // EOF , END OF FILITO BRO
+
+        }
         std::vector<std::string> inputParts = split(client.message);
         if(inputParts.size() != 4){
             std::cerr << "Invalid input" << std::endl;
@@ -127,6 +149,7 @@ void caseAuth(IPK24_Client& client){
     }
 
 void caseAuthUDP(IPK24_Client& client){
+    uint16_t authMsgID = 0x00;
     client.receiveConfirmation(client.messageID - 1);
     std::string response = client.recieveDataUDP();
 
@@ -147,12 +170,14 @@ void caseAuthUDP(IPK24_Client& client){
                 std::cout << "Success" << std::endl;
                 std::vector<uint8_t> message;
                 message.push_back(0x00); // confirm
-                message.push_back(0x00); // UPRAVOVAT
+                message.push_back(authMsgID); // UPRAVOVAT maybe ?
                 message.push_back(0x00); // Horní bajt
                 client.sendDataUDP(message);
                 client.state = Client_State::open;
                 return;
             }
+        }else{
+            authMsgID += 0x01; // increment for retry!
         }
 
 }   
@@ -226,11 +251,15 @@ int main(int argc, char *argv[]){
     std::string command = inputParts[0];
     std::string joinedInputMsg;
     int activity;
+    int i = 0;
     while(true){
+        
         // print the state
-        // std::cout << "State: " << static_cast<int>(client.state) << std::endl;
+        std::cout << "State: " << static_cast<int>(client.state) << std::endl;
         switch ( client.state )
-        {
+
+        {   
+            
             case(Client_State::start):
 
                 stateStart(client, inputParts, command);
@@ -296,24 +325,7 @@ int main(int argc, char *argv[]){
                             }
                         }else{
                             
-                            std::string response = client.recieveDataUDP();
-                            uint8_t type = static_cast<uint8_t>(response[0]);
-                            uint16_t messageID = static_cast<uint16_t>(response[1]) << 8 | static_cast<uint16_t>(response[2]);
-                            if(type == 0x04){
-                                std::vector<uint8_t> message;
-                                message.push_back(0x00);
-                                message.push_back(static_cast<uint8_t>(messageID >> 8)); // Horní bajt
-                                message.push_back(static_cast<uint8_t>(messageID & 0xFF)); // Dolní bajt
-                                client.sendDataUDP(message);
-                            }else if(type == 0x01){
-                                
-                                std::vector<uint8_t> message2;
-                                message2.push_back(0x00);
-                                message2.push_back(static_cast<uint8_t>(messageID >> 8)); // Horní bajt
-                                message2.push_back(static_cast<uint8_t>(messageID & 0xFF)); // Dolní bajt
-                                client.sendDataUDP(message2);
-
-                            }
+                            handleIncome(client);
                             std::cout << "Success" << std::endl;
                             client.state = Client_State::open;
                             break;
@@ -324,7 +336,11 @@ int main(int argc, char *argv[]){
                     // then check if there is something to read from the user
                     if(FD_ISSET(STDIN_FILENO, &readfds)){
                         // read, split and validate user input
-                        std::getline(std::cin, client.message);
+                        if( !std::getline(std::cin, client.message)){
+                            // std::cerr << "EOF" << std::endl;
+                            client.state = Client_State::end;
+                            break;
+                        }
                         inputParts = split(client.message);
                         command = inputParts[0];
                         if(command == "/join")
