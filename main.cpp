@@ -36,6 +36,7 @@ void handleIncome(IPK24_Client& client){
         message2.push_back(static_cast<uint8_t>(messageID >> 8)); // Horní bajt
         message2.push_back(static_cast<uint8_t>(messageID & 0xFF)); // Dolní bajt
         client.sendDataUDP(message2);
+        client.replyReceived = true;
 
     }
 }
@@ -403,7 +404,7 @@ int main(int argc, char *argv[]){
                         
                     }
                     // then check if there is something to read from the user
-                    if(FD_ISSET(STDIN_FILENO, &readfds)){
+                    if(FD_ISSET(STDIN_FILENO, &readfds) && client.replyReceived == true){
                         // read, split and validate user input
                         if( !std::getline(std::cin, client.message)){
                             // std::cerr << "EOF" << std::endl;
@@ -440,6 +441,7 @@ int main(int argc, char *argv[]){
 
                                 // CONFIRM 
                                 client.receiveConfirmation(refID);
+                                client.replyReceived = false;
                                 
                                
 
