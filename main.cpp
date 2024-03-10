@@ -1,10 +1,22 @@
 #include "client.cpp"
 
-bool sigInt = false;
+
+IPK24_Client* globalClientPtr = nullptr;
 
 void signalHandler(int signum) {
-    exit(4);
-    sigInt = true;
+    
+    if (globalClientPtr != nullptr) {
+        // Odeslat zprávu před ukončením
+        std::vector<uint8_t> message;
+        message.push_back(0xFF); // Předpokládáme, že 0xFF je kód pro ukončení
+        message.push_back(static_cast<uint8_t>(globalClientPtr->messageID >> 8));
+        message.push_back(static_cast<uint8_t>(globalClientPtr->messageID & 0xFF));
+        globalClientPtr->sendDataUDP(message);
+        globalClientPtr->receiveConfirmation(globalClientPtr->messageID - 1);
+    }
+
+    std::cout << "SIGINT caught, shutting down." << std::endl;
+    exit(signum); // Ukončení programu s daným signálem
 }
 
 void handleIncome(IPK24_Client& client){
@@ -220,9 +232,10 @@ void caseAuthUDP(IPK24_Client& client){
                 std::cout << "Success" << std::endl;
                 std::vector<uint8_t> message;
                 message.push_back(0x00); // confirm
-                message.push_back(authMsgID); // UPRAVOVAT maybe ?
-                message.push_back(0x00); // Horní bajt
+                message.push_back(authMsgID); // UPRAVOVAT maybe ? CHANGE in reply he sents ID msg
+                message.push_back(0x00); // Horní bajt CHANGE AS WELL
                 client.sendDataUDP(message);
+                
                 client.state = Client_State::open;
                 return;
             }
@@ -248,6 +261,7 @@ int main(int argc, char *argv[]){
     uint8_t retrans = 3;
     std::string ip;
     std::string protocol;
+    std::vector<uint8_t> message;
     int option;
     while((option = getopt(argc , argv, "t:s:p:d:r:h")) != -1){
         switch(option){
@@ -288,6 +302,7 @@ int main(int argc, char *argv[]){
 
     IPK24_Client client(port, ip, protocol == "tcp" ? SOCK_STREAM : SOCK_DGRAM);
     // signal(SIGINT, signalHandler(client));
+    globalClientPtr = &client;
     
     signal(SIGINT, signalHandler);
     // client.connectTCP();
@@ -305,10 +320,9 @@ int main(int argc, char *argv[]){
     int i = 0;
     while(true){
 
-        if(sigInt){
-            client.closeConnectionTCP();
-            exit(0);
-        }
+
+        
+        
         
         // print the state
         //std::cout << "State: " << static_cast<int>(client.state) << std::endl;
@@ -337,6 +351,10 @@ int main(int argc, char *argv[]){
 
             case( Client_State::open ):
 
+
+
+               
+
                     
                     FD_ZERO(&readfds);
 
@@ -349,12 +367,7 @@ int main(int argc, char *argv[]){
 
                     activity = select(std::max(client.sock_fd, STDIN_FILENO) + 1, &readfds, NULL, NULL, &tv);
 
-                    if(activity < 0){
-                        std::cerr << "Select error" << std::endl;
-                        exit(1);
-                    }
-
-
+                    
                     // first check if there is something to read from the server
                     if(FD_ISSET(client.sock_fd, &readfds)){
                         // read data and validate
@@ -488,8 +501,14 @@ int main(int argc, char *argv[]){
         case( Client_State::end ):
             //print success
             std::cout << "Success ENDDD" << std::endl;
-            client.closeConnectionTCP();
-            exit(0);
+            
+            // message.push_back(0xFF); // BYE typ
+            // message.push_back(static_cast<uint8_t>(client.messageID >> 8)); // Horní bajt
+            // message.push_back(static_cast<uint8_t>(client.messageID & 0xFF)); // Dolní bajt
+            // client.sendDataUDP(message);
+            // client.receiveConfirmation(client.messageID - 1);
+
+            // exit(0);
         case (Client_State::error):
             //print error
             printf("Error\n");
