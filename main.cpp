@@ -93,6 +93,8 @@ void stateStart(IPK24_Client& client, std::vector<std::string> inputParts, std::
         // client.message = "1 " + userName + " " + client.displayName + " " + secret + "\r\n";
 
         if(client.sock_protocol == SOCK_STREAM){
+
+            client.connectTCP();
             client.message = "AUTH " + userName + " AS " + client.displayName + " USING " + secret + "\r\n";
             client.sendData(client.message);
             client.receiveData();
@@ -338,7 +340,6 @@ int main(int argc, char *argv[]){
 
                     
                     FD_ZERO(&readfds);
-
                     FD_SET(client.sock_fd, &readfds);
                     FD_SET(STDIN_FILENO, &readfds);
 
