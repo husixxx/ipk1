@@ -53,7 +53,7 @@ class IPK24_Client{
 
 
         IPK24_Client(int port, std::string ip, int sock_protocol);
-        
+        void sendJoin(std::vector<std::string> inputParts);
         void sendDataUDP(std::vector<uint8_t> message);
         void connectTCP();
         std::string recieveDataUDP();
@@ -82,6 +82,7 @@ class IPK24_Client{
 
             
         }
+        void handleUDPincome();
         std::string message;
         Client_State state;
         std::string displayName;
@@ -89,6 +90,7 @@ class IPK24_Client{
         int sock_protocol;
         struct sockaddr *dyn_address;
         uint16_t messageID;
+        bool replyReceived;
         
         
     

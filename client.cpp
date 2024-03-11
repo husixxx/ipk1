@@ -14,7 +14,7 @@ IPK24_Client::IPK24_Client(int port, std::string ip, int sock_protocol){
     this->sock_protocol = sock_protocol;
     std::array<char, 1024> buffer{0};
     this->state = Client_State::start;
-
+    this->replyReceived = true;
    this->messageID = 0;
     
     // create a new socket
@@ -415,5 +415,54 @@ void IPK24_Client::sendMessage(std::vector<std::string> inputParts){
         message.push_back(0x00); // Nulový bajt na konci
         this->sendDataUDP(message);
         this->receiveConfirmation(refID); // confirm
+    }
+}
+
+
+void IPK24_Client::sendJoin(std::vector<std::string> inputParts){
+    if(this->sock_protocol == SOCK_STREAM){
+        std::string joinedInputMsg = join(inputParts);
+        this->message = "JOIN " + inputParts[1] + " AS " + this->displayName + "\r\n";
+        this->sendData(this->message);
+    }
+    else{
+        std::vector<uint8_t> message;
+        uint8_t refID = this->messageID;
+        message.push_back(0x03); // JOIN typ
+        message.push_back(static_cast<uint8_t>(this->messageID >> 8)); // Horní bajt
+        message.push_back(static_cast<uint8_t>(this->messageID & 0xFF)); // Dolní bajt
+        for (char c : inputParts[1]) {
+            message.push_back(static_cast<uint8_t>(c));
+        }
+        message.push_back(0x00); // Nulový bajt na konci
+        for (char c : this->displayName) {
+            message.push_back(static_cast<uint8_t>(c));
+        }
+        message.push_back(0x00); // Nulový bajt na konci
+        this->sendDataUDP(message);
+        this->receiveConfirmation(refID); // confirm
+        this->replyReceived = false;
+    }
+}
+
+void IPK24_Client::handleUDPincome(){
+    std::string response = this->recieveDataUDP();
+    uint8_t type = static_cast<uint8_t>(response[0]);
+    uint16_t messageID = static_cast<uint16_t>(response[1]) << 8 | static_cast<uint16_t>(response[2]);
+    if(type == 0x04){
+        std::vector<uint8_t> message;
+        message.push_back(0x00);
+        message.push_back(static_cast<uint8_t>(messageID >> 8)); // Horní bajt
+        message.push_back(static_cast<uint8_t>(messageID & 0xFF)); // Dolní bajt
+        this->sendDataUDP(message);
+    }else if(type == 0x01){
+        
+        std::vector<uint8_t> message2;
+        message2.push_back(0x00);
+        message2.push_back(static_cast<uint8_t>(messageID >> 8)); // Horní bajt
+        message2.push_back(static_cast<uint8_t>(messageID & 0xFF)); // Dolní bajt
+        this->sendDataUDP(message2);
+        this->replyReceived = true;
+
     }
 }
