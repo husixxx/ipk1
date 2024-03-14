@@ -429,8 +429,11 @@ int main(int argc, char *argv[]){
                 break;
             
         case( Client_State::end ):
-            //print success
             std::cout << "Success ENDDD" << std::endl;
+            //print success
+            client.receiveConfirmation(client.messageID - 1);
+            client.handleUDPincome();
+            exit(0);
             
             // message.push_back(0xFF); // BYE typ
             // message.push_back(static_cast<uint8_t>(client.messageID >> 8)); // Horní bajt

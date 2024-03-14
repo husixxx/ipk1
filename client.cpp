@@ -464,5 +464,28 @@ void IPK24_Client::handleUDPincome(){
         this->sendDataUDP(message2);
         this->replyReceived = true;
 
+    }else if( type == 0xFE){
+        std::vector<uint8_t> message2;
+        message2.push_back(0x00);
+        message2.push_back(static_cast<uint8_t>(messageID >> 8)); // Horní bajt
+        message2.push_back(static_cast<uint8_t>(messageID & 0xFF)); // Dolní bajt
+        this->sendDataUDP(message2);
+
+        std::vector<uint8_t> messageBye;
+        messageBye.push_back(0xFF);
+        messageBye.push_back(static_cast<uint8_t>(this->messageID >> 8)); // Horní bajt
+        messageBye.push_back(static_cast<uint8_t>(this->messageID & 0xFF)); // Dolní bajt
+        this->sendDataUDP(messageBye);
+        this->receiveConfirmation(this->messageID - 1);
+        
+    }else if( type == 0xFF){
+        std::vector<uint8_t> message2;
+        message2.push_back(0x00);
+        message2.push_back(static_cast<uint8_t>(messageID >> 8)); // Horní bajt
+        message2.push_back(static_cast<uint8_t>(messageID & 0xFF)); // Dolní bajt
+        this->sendDataUDP(message2);
+        exit(0);
+        
+        
     }
 }
