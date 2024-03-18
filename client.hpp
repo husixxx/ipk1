@@ -64,10 +64,14 @@ class IPK24_Client{
             sendDataTCP(message);
             
         }
+        void handleTCPincome(std::vector<std::string> inputParts);
+        std::vector<uint8_t> constructMessageUDP(uint8_t messageID, std::string message);
         void printUDPmessagge(std::string message);
         std::string receiveReply(uint16_t expectedMessageID);
-        bool receiveConfirmation(uint16_t expectedMessageID);
+        bool receiveConfirmation(uint16_t expectedMessageID, std::vector<uint8_t> message);
         std::string recieveDataTCP();
+        void handleUserInput();
+        void sendAuth(std::vector<std::string> inputParts);
         void printMessage(std::string message);
         void closeConnectionTCP();
         void closeConnectionUDP();
@@ -83,6 +87,7 @@ class IPK24_Client{
             
         }
         void handleUDPincome();
+        std::string userName;
         std::string message;
         Client_State state;
         std::string displayName;

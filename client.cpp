@@ -27,6 +27,8 @@ IPK24_Client::IPK24_Client(int port, std::string ip, int sock_protocol){
 
     printf("Socket created\n");
 
+
+
     
 
         
@@ -76,13 +78,13 @@ void IPK24_Client::closeConnection(){
     
 }
 
-void IPK24_Client::closeConnectionUDP(){
-    this->sendData("BYE\r\n");
-    this->receiveConfirmation(this->messageID - 1);
-    close(this->sock_fd);
-    printf("Socket closed\n");
+// void IPK24_Client::closeConnectionUDP(){
+//     this->sendData("BYE\r\n");
+//     this->receiveConfirmation(this->messageID - 1);
+//     close(this->sock_fd);
+//     printf("Socket closed\n");
     
-}
+// }
 
 
 std::string IPK24_Client::recieveDataUDP() {
@@ -132,7 +134,7 @@ void IPK24_Client::printUDPmessagge(std::string message){
     switch(type){
 
         case 0x01:
-            messageContents = message.substr(5); // Přeskočit prvních 5 bajtů (1 byte message type + 2 bytes MessageID + 1 byte Result + 2 bytes Ref_MessageID)
+            messageContents = message.substr(6); // Přeskočit prvních 5 bajtů (1 byte message type + 2 bytes MessageID + 1 byte Result + 2 bytes Ref_MessageID)
             nullTerminatorPos = messageContents.find('\0');
             if (nullTerminatorPos != std::string::npos) {
                 messageContents = messageContents.substr(0, nullTerminatorPos); // Extrahovat pouze do nulového byte
@@ -251,23 +253,26 @@ void IPK24_Client::printUDPmessagge(std::string message){
 //     return "";
 // }
 
-bool IPK24_Client::receiveConfirmation(uint16_t expectedMessageID){
+bool IPK24_Client::receiveConfirmation(uint16_t expectedMessageID, std::vector<uint8_t> message){
     fd_set readfds;
     FD_ZERO(&readfds);
     FD_SET(this->sock_fd, &readfds);
-
+    
     struct timeval tv;
     tv.tv_sec = 0;
-    tv.tv_usec = 250; // Timeout for select
+    tv.tv_usec = 250 * 1000; // Timeout for select
 
     for(int i = 0; i < 3 ; i++){
         int activity = select(this->sock_fd + 1, &readfds, NULL, NULL, &tv);
         if (activity < 0) {
             // Handle error
         } else if (activity == 0) {
+            sendDataUDP(message);
             continue;
         } else {
             if (FD_ISSET(this->sock_fd, &readfds)) {
+
+                
                 // We have received data
                 // Read the confirmation, validate it, and return true if it matches messageId
                 std::string response = recieveDataUDP();
@@ -279,20 +284,18 @@ bool IPK24_Client::receiveConfirmation(uint16_t expectedMessageID){
                     if(messageID == expectedMessageID){
                         return true;
                     }else{
-                        continue;
+                        std::cout << "Message ID: " << messageID << std::endl;
                     }
-                if(type == 0x01){
-                    std::cout << "Type KOKOT: " << type << std::endl;
-                }
                     
                 }else{
-                    continue;
+                    exit(33);
                 }
             }
         }
     }
 
-    return false;
+    std::cerr << "No confirmation received\n";
+    exit(11); // HANDLE !!
 }
 void IPK24_Client::sendDataUDP(std::vector<uint8_t> message){
     int address_len = sizeof(this->server_address);
@@ -414,7 +417,72 @@ void IPK24_Client::sendMessage(std::vector<std::string> inputParts){
         }
         message.push_back(0x00); // Nulový bajt na konci
         this->sendDataUDP(message);
-        this->receiveConfirmation(refID); // confirm
+        this->receiveConfirmation(refID, message); // confirm
+    }
+}
+void IPK24_Client::handleTCPincome(std::vector<std::string> inputParts){
+    this->receiveData();
+    std::vector<std::string> reply = split(this->reply);
+    if((reply[0] == "AUTH" || reply[0] == "JOIN"))
+    {
+        this->sendData("ERROR FROM " + this->displayName + " IS " + join(inputParts) + "\r\n");
+        this->state = Client_State::error;
+
+    }
+
+    if(reply[0] == "ERR"){
+        this->sendData("BYE\r\n");
+        this->state = Client_State::end;
+        
+    }
+    
+    if(reply[0] == "BYE"){
+        this->state = Client_State::end;
+        
+    }
+    if(reply[0] == "REPLY" && reply[1] == "OK"){
+        this->replyReceived = true;
+        return;
+    }
+    return;
+}
+
+void IPK24_Client::handleUserInput(){
+    std::vector<std::string> inputParts = split(this->message);
+    if(inputParts.size() < 1){
+        std::cerr << "Invalid input" << std::endl;
+        exit(32);
+        
+    }
+    std::string command = inputParts[0];
+    if(command == "/join")
+    {
+        this->sendJoin(inputParts);
+        this->state = Client_State::open;
+        
+        return;
+    }
+    else if (command == "/rename"){
+        this->displayName = inputParts[1];
+        return;
+    }
+    else if(command == "/help"){
+        std::cout << "Commands: /join, /rename, /auth, /help" << std::endl;
+        return;
+    }
+    else if(command == "/auth"){
+        std::cerr << "You are already authenticated !" << std::endl;
+        return;
+    }
+    else if(command[0] != '/'){
+        // not command, must be message
+        this->sendMessage(inputParts);
+        
+        return;
+
+    }else{
+        std::cerr << "Invalid command" << std::endl;
+        return;
     }
 }
 
@@ -424,6 +492,7 @@ void IPK24_Client::sendJoin(std::vector<std::string> inputParts){
         std::string joinedInputMsg = join(inputParts);
         this->message = "JOIN " + inputParts[1] + " AS " + this->displayName + "\r\n";
         this->sendData(this->message);
+        this->replyReceived = false;
     }
     else{
         std::vector<uint8_t> message;
@@ -440,7 +509,7 @@ void IPK24_Client::sendJoin(std::vector<std::string> inputParts){
         }
         message.push_back(0x00); // Nulový bajt na konci
         this->sendDataUDP(message);
-        this->receiveConfirmation(refID); // confirm
+        this->receiveConfirmation(refID, message); // confirm
         this->replyReceived = false;
     }
 }
@@ -476,7 +545,7 @@ void IPK24_Client::handleUDPincome(){
         messageBye.push_back(static_cast<uint8_t>(this->messageID >> 8)); // Horní bajt
         messageBye.push_back(static_cast<uint8_t>(this->messageID & 0xFF)); // Dolní bajt
         this->sendDataUDP(messageBye);
-        this->receiveConfirmation(this->messageID - 1);
+        this->receiveConfirmation(this->messageID - 1, messageBye);
         
     }else if( type == 0xFF){
         std::vector<uint8_t> message2;
@@ -488,4 +557,37 @@ void IPK24_Client::handleUDPincome(){
         
         
     }
+}
+
+void IPK24_Client::sendAuth(std::vector<std::string> parsedParts){
+
+
+    
+
+    std::string userName = parsedParts[0];
+    this->displayName = parsedParts[2]; 
+    std::string secret = parsedParts[1];
+
+    std::vector<uint8_t> message;
+    // Přidání typu zprávy
+    message.push_back(0x02); // AUTH typ
+    message.push_back(static_cast<uint8_t>(this->messageID >> 8)); // Horní bajt
+    message.push_back(static_cast<uint8_t>(this->messageID & 0xFF)); // Dolní bajt
+    // Přidání Username
+    for (char c : userName) {
+        message.push_back(static_cast<uint8_t>(c));
+    }
+    message.push_back(0x00); // Nulový bajt na konci
+    
+    for (char c : this->displayName) {
+        message.push_back(static_cast<uint8_t>(c));
+    }
+    message.push_back(0x00); // Nulový bajt na konci
+    for (char c : secret) {
+        message.push_back(static_cast<uint8_t>(c));
+    }
+    message.push_back(0x00); // Nulový bajt na konci
+    this->sendDataUDP(message);
+  
+    this->receiveConfirmation(this->messageID - 1, message); 
 }
