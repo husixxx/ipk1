@@ -190,15 +190,6 @@ void caseAuthUDP(IPK24_Client& client , std::vector<std::string> inputParts){
     
         std::string response = client.recieveDataUDP();
 
-        // uint8_t type_conf = static_cast<uint8_t>(confirm[0]);
-        // uint16_t messageIDconfirm = static_cast<uint16_t>(confirm[1]) << 8 | static_cast<uint16_t>(confirm[2]);
-
-        // if(messageIDconfirm != client.messageId){
-        //     std::cerr << "Invalid message ID" << std::endl;
-        //     client.state = Client_State::error;
-        //     return;
-        // } 
-
         uint8_t type = static_cast<uint8_t>(response[0]);
         uint16_t messageID = static_cast<uint16_t>(response[1]) << 8 | static_cast<uint16_t>(response[2]);
         if(type == 0x01){

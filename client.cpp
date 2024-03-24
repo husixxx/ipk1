@@ -104,20 +104,7 @@ std::string IPK24_Client::recieveDataUDP() {
     int sender_port = ntohs(sender_address.sin_port);
     this->server_address = sender_address;
     this->address = (struct sockaddr *)&this->server_address;
-    // Odpověď serveru byla přijata, vytvoříme nový socket a nasloucháme na portu odesílatele
     
-    // printf("Message Type: %d\n", type);
-    // printf("Message ID: %d\n", messageID);
-    // printf("Content: %s\n", content.c_str());
-
-    // Nastavíme adresu klienta na nulu a port na port odesílatele
-    
-    
-    // Port odesílatele
-
-    
-    
-   // printf("Data received from port: %d\n", sender_port);
     this->printUDPmessagge(std::string(buffer.data(), bytes_rx));
 
     return std::string(buffer.data(), bytes_rx);
@@ -130,6 +117,7 @@ void IPK24_Client::printUDPmessagge(std::string message){
     
     size_t nullTerminatorPos;
     uint8_t type = static_cast<uint8_t>(message[0]);
+    uint8_t reply = static_cast<uint8_t>(message[3]);
     std::string messageContents;
     switch(type){
 
@@ -143,7 +131,12 @@ void IPK24_Client::printUDPmessagge(std::string message){
                 return;
             }
 
+            if(reply == 0x00){
+                std::cerr << "Failure: " << messageContents << "\n";
+            }else if(reply == 0x01){
+
             std::cout << "Success: " << messageContents << "\n";
+            }
             break;
 
         case 0x04:
@@ -177,82 +170,6 @@ void IPK24_Client::printUDPmessagge(std::string message){
     
 }
 
-
-
-
-
-
-
-
-
-// std::string getMessage(std::string message){
-//     std::vector<std::string> kar = split(message);
-//     std::string Message = kar[0];
-
-//     switch(Message){
-//         case "AUTH":
-//             return Messages::AUTH;
-//         case "/join":
-//             // std::string msgToSend = "JOIN " + kar[1] + " AS " client. + "\r\n";
-//             return msgToSend;
-//         case "ERR":
-//             return Messages::ERR;
-//         case "BYE":
-//             return Messages::BYE;
-//         case "MSG":
-//             return Messages::MSG;
-//         case "REPLY":
-//             return Messages::REPLY;
-//     }
-    
-// }
-
-// std::string IPK24_Client::receiveReply(uint16_t expectedMessageID){
-//     fd_set readfds;
-//     FD_ZERO(&readfds);
-//     FD_SET(this->sock_fd, &readfds);
-
-//     struct timeval tv;
-//     tv.tv_sec = 0;
-//     tv.tv_usec = 250 * 1000; // Timeout for select
-
-//     uint16_t receivedMessageID;
-//     uint8_t messageType;
-//     bool success = false;
-
-    
-//     int activity = select(this->sock_fd + 1, &readfds, NULL, NULL, &tv);
-//     if (activity < 0) {
-//         // Handle select error
-//         perror("select error");
-//         break;
-//     } else if (activity == 0) {
-//         // Timeout, no data received
-//         continue;
-//     } else {
-//         if (FD_ISSET(this->sock_fd, &readfds)) {
-//             // We have received data
-//             std::string response = recieveDataUDP();
-//             uint8_t type = static_cast<uint8_t>(response[0]);
-//             std::cout << "Type: " << type << std::endl;
-//             if(type == 0x01){
-//                 uint16_t messageID = static_cast<uint16_t>(response[1]) << 8 | static_cast<uint16_t>(response[2]);
-//                 std::vector<uint8_t> message2;
-//                 message2.push_back(0x00);
-//                 message2.push_back(static_cast<uint8_t>(messageID >> 8)); // Horní bajt
-//                 message2.push_back(static_cast<uint8_t>(messageID & 0xFF)); // Dolní bajt
-//                 this->sendDataUDP(message2);
-//             }else{
-//                 continue;
-            
-//             }
-//         }
-//     }
-    
-
-//     return "";
-// }
-
 bool IPK24_Client::receiveConfirmation(uint16_t expectedMessageID, std::vector<uint8_t> message){
     fd_set readfds;
     FD_ZERO(&readfds);
@@ -263,6 +180,8 @@ bool IPK24_Client::receiveConfirmation(uint16_t expectedMessageID, std::vector<u
     tv.tv_usec = 250 * 1000; // Timeout for select
 
     for(int i = 0; i < 3 ; i++){
+
+        // WHILE CURR TIME < 250MS, 
         int activity = select(this->sock_fd + 1, &readfds, NULL, NULL, &tv);
         if (activity < 0) {
             // Handle error
@@ -280,7 +199,7 @@ bool IPK24_Client::receiveConfirmation(uint16_t expectedMessageID, std::vector<u
                 if(type == 0x00){
 
                     
-                    uint16_t messageID = static_cast<uint16_t>(response[1]) << 8 | static_cast<uint16_t>(response[2]);
+                    uint16_t messageID = static_cast<uint16_t>(response[1]) & 0xFF | static_cast<uint16_t>(response[2]);
                     if(messageID == expectedMessageID){
                         return true;
                     }else{
@@ -379,14 +298,14 @@ void IPK24_Client::printMessage(std::string message){
     
 
     if(msg == "MSG"){
-        std::cout << usrName + ": " << join(pieces) << std::endl;
+        std::cout << usrName + ": " << join(pieces);
     }else if (msg == "ERR"){
         std::cout << "ERROR FROM" + usrName + ": "<< join(pieces) << std::endl;
     }else if (msg == "REPLY"){
         if(possibleReply == "OK"){
-            std::cout << "Succes: " << join(pieces) << std::endl;
+            std::cout << "Succes: " << join(pieces);
         }else{
-            std::cout << "Failure: " << join(pieces) << std::endl;
+            std::cout << "Failure: " << join(pieces);
         }
     }
     
@@ -396,6 +315,14 @@ void IPK24_Client::printMessage(std::string message){
 
 
 void IPK24_Client::sendMessage(std::vector<std::string> inputParts){
+    // std::regex idRegex("^[A-Za-z0-9-]{1,20}$");
+    // std::regex secretRegex("^[A-Za-z0-9-]{1,128}$");
+    std::regex contentRegex("^[\\x20-\\x7E]{1,1400}$"); // VCHAR + SP, předpokládáme, že je SP mezera a VCHAR jsou tisknutelné znaky
+    // std::regex dnameRegex("^[\\x20-\\x7E]{1,20}$");
+    if(!std::regex_match(join(inputParts), contentRegex)){
+        std::cerr << "Invalid message content\n";
+        return;
+    }
     if(this->sock_protocol == SOCK_STREAM){
 
         std::string joinedInputMsg = join(inputParts);
@@ -406,12 +333,13 @@ void IPK24_Client::sendMessage(std::vector<std::string> inputParts){
         std::vector<uint8_t> message;
         uint8_t refID = this->messageID;
         message.push_back(0x04); // MSG typ
-        message.push_back(static_cast<uint8_t>(this->messageID >> 8)); // Horní bajt
         message.push_back(static_cast<uint8_t>(this->messageID & 0xFF)); // Dolní bajt
+        message.push_back(static_cast<uint8_t>(this->messageID >> 8)); // Horní bajt
         for (char c : this->displayName) {
             message.push_back(static_cast<uint8_t>(c));
         }
         message.push_back(0x00); // Nulový bajt na konci
+
         for (char c : join(inputParts)) {
             message.push_back(static_cast<uint8_t>(c));
         }
@@ -488,6 +416,11 @@ void IPK24_Client::handleUserInput(){
 
 
 void IPK24_Client::sendJoin(std::vector<std::string> inputParts){
+
+    // MUUUUUUST FIX !!!!!!std::regex idRegex("^[A-Za-z0-9-]{1,20}$");
+
+
+
     if(this->sock_protocol == SOCK_STREAM){
         std::string joinedInputMsg = join(inputParts);
         this->message = "JOIN " + inputParts[1] + " AS " + this->displayName + "\r\n";
@@ -498,8 +431,8 @@ void IPK24_Client::sendJoin(std::vector<std::string> inputParts){
         std::vector<uint8_t> message;
         uint8_t refID = this->messageID;
         message.push_back(0x03); // JOIN typ
-        message.push_back(static_cast<uint8_t>(this->messageID >> 8)); // Horní bajt
         message.push_back(static_cast<uint8_t>(this->messageID & 0xFF)); // Dolní bajt
+        message.push_back(static_cast<uint8_t>(this->messageID >> 8)); // Horní bajt
         for (char c : inputParts[1]) {
             message.push_back(static_cast<uint8_t>(c));
         }
