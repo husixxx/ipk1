@@ -1,6 +1,5 @@
 #include "client.cpp"
-
-
+#include "main.hpp"
 IPK24_Client* globalClientPtr = nullptr;
 
 void signalHandler(int signum) {
@@ -8,6 +7,7 @@ void signalHandler(int signum) {
     if (globalClientPtr != nullptr) {
         // Odeslat zprávu před ukončením
         if(globalClientPtr->sock_protocol == SOCK_STREAM){
+            //aaa
             globalClientPtr->sendDataTCP("BYE\r\n");
             // globalClientPtr->receiveData();
         }else{
@@ -21,8 +21,9 @@ void signalHandler(int signum) {
         }
     }
 
-    std::cout << "SIGINT caught, shutting down." << std::endl;
-    exit(signum); // Ukončení programu s daným signálem
+    
+    //close(globalClientPtr->sock_fd);
+    exit(0); // Ukončení programu s daným signálem
 }
 
 
@@ -39,43 +40,45 @@ void print_help() {
 }
 
 
+
+
 std::vector<std::string> parseInput(std::vector<std::string> inputParts) {
     std::vector<std::string> parsedInput;
 
-    // Předpokládáme, že vstup má správný formát a dostatečný počet částí
+    
     if (inputParts.size() < 4) {
-        return parsedInput; // Vrací prázdný vektor, pokud nejsou všechny části přítomny
+        return parsedInput; // return empty vector, if input is invalid
     }
 
     std::string userName = inputParts[1];
     std::string secret = inputParts[2];
     std::string displayName = inputParts[3]; 
-    // MessageContent není součástí inputParts v tvém příkladu
+    
 
-    // Regex pro validaci
+    // regex for validation
     std::regex userAndChannelRegex("^[A-Za-z0-9\\-]{1,20}$"); // Pro Username a ChannelID
     std::regex secretRegex("^[A-Za-z0-9\\-]{1,128}$"); // Pro Secret
     std::regex displayNameRegex("^[\x21-\x7E]{1,20}$"); // Pro DisplayName
 
-    // Kontrola Username a ChannelID
+    // username
     if (!std::regex_match(userName, userAndChannelRegex)) {
         exit(10);
         return parsedInput; // Chybný vstup
     }
 
-    // Kontrola Secret
+    // secret
     if (!std::regex_match(secret, secretRegex)) {
         exit(10);
         return parsedInput; // Chybný vstup
     }
 
-    // Kontrola DisplayName
+    // displayName
     if (!std::regex_match(displayName, displayNameRegex)) {
         exit(10);
         return parsedInput; // Chybný vstup
     }
-
-    // Všechny kontroly prošly, přidáme validní hodnoty do parsedInput
+ 
+    //return parsed input
     parsedInput.push_back(userName);
     parsedInput.push_back(secret);
     parsedInput.push_back(displayName);
@@ -83,47 +86,55 @@ std::vector<std::string> parseInput(std::vector<std::string> inputParts) {
 
     return parsedInput;
 }
+
+
+
+
 void stateStart(IPK24_Client& client, std::vector<std::string> inputParts, std::string command){
-    if(command == "/auth"){
+	
+	
+	if(command == "/auth"){
         
         std::vector<std::string> parsedParts = parseInput(inputParts);
         if(parsedParts.empty()){
             std::cerr << "Invalid input" << std::endl;
-            client.state = Client_State::error;
             return;
         }
         std::string userName = parsedParts[0];
         client.displayName = parsedParts[2]; 
         std::string secret = parsedParts[1];
 
-        // client.message = "1 " + userName + " " + client.displayName + " " + secret + "\r\n";
+        
 
         if(client.sock_protocol == SOCK_STREAM){
 
-            client.connectTCP();
+            //client.connectTCP();
             client.message = "AUTH " + userName + " AS " + client.displayName + " USING " + secret + "\r\n";
             client.sendData(client.message);
             client.receiveData();
             client.state = Client_State::auth;
             return;
         }
+
+
         // ADD MESSAGE
 
 
         client.sendAuth(parsedParts);
         client.state = Client_State::auth;
-        // client.state = Client_State::auth;
+        
 
 
     }else{
 
-        printf("Error\n");
-        client.state = Client_State::error; // HANDLE THIS, REPEAT UNTIL AUTH IS SUCCESSFUL
-
+        std::cerr << "ERR: Invalid command ! nothing happenned." << std::endl;
+        client.state = Client_State::start; // HANDLE THIS, REPEAT UNTIL AUTH IS SUCCESSFUL
+        return;
     }
 
-    // Function code...
+    
 }
+
 void caseAuth(IPK24_Client& client){
     std::vector<std::string> reply = split(client.reply);
 
@@ -143,13 +154,13 @@ void caseAuth(IPK24_Client& client){
     if( reply[0] == "REPLY" && reply[1] == "NOK"){
 
         if(!std::getline(std::cin, client.message)){
-            exit(23); // EOF , END OF FILITO BRO
+            client.state = Client_State::end; // EOF , END OF FILITO BRO
 
         }
         std::vector<std::string> inputParts = split(client.message);
         if(inputParts.size() != 4){
             std::cerr << "Invalid input" << std::endl;
-            client.state = Client_State::error;
+            
             return;
         }
         std::string command = inputParts[0];
@@ -160,7 +171,6 @@ void caseAuth(IPK24_Client& client){
 
         if(userName.empty() || client.displayName.empty() || secret.empty() ){
             std::cerr << "Invalid input bro" << std::endl;
-            client.state = Client_State::error;
             return;
         }
 
@@ -173,17 +183,6 @@ void caseAuth(IPK24_Client& client){
         }
     }
 
-void printHexValue(const void* data, size_t size, uint16_t specificVariable) {
-    const unsigned char* bytes = static_cast<const unsigned char*>(data);
-    for (size_t i = 0; i < size; i++) {
-        printf("%02X ", bytes[i]);
-    }
-    printf("\n");
-
-    printf("Specific Variable: %04X\n", specificVariable);
-
-   
-}
 
 void caseAuthUDP(IPK24_Client& client , std::vector<std::string> inputParts){
         uint16_t authMsgID = 0x00;
@@ -219,13 +218,21 @@ void caseAuthUDP(IPK24_Client& client , std::vector<std::string> inputParts){
                 std::vector<std::string> parsedParts = parseInput(split(client.message));
                 if(parsedParts.empty()){
                     std::cerr << "Invalid input" << std::endl;
-                    client.state = Client_State::error;
                     return;
                 }
                 client.sendAuth(parsedParts);// ADD MESSAGE 
                 client.state = Client_State::auth;
 
             }
+        }else if(type == 0xfe){
+            std::vector<uint8_t> message;
+            message.push_back(0x00); // confirm
+            message.push_back(static_cast<uint8_t>(messageID >> 8)); // Horní bajt
+            message.push_back(static_cast<uint8_t>(messageID & 0xFF));
+            client.sendDataUDP(message);
+            client.state = Client_State::end;
+            // Horní bajt CHANGE AS W
+
         }
 
 
@@ -237,9 +244,9 @@ void caseAuthUDP(IPK24_Client& client , std::vector<std::string> inputParts){
 
 int main(int argc, char *argv[]){
 
-    // Ctrl+C handler
-
     
+
+    // Local variables needed for the program
     std::string userName;
     std::string secret;
     uint16_t port;
@@ -249,6 +256,9 @@ int main(int argc, char *argv[]){
     std::string protocol;
     std::vector<uint8_t> message;
     int option;
+
+
+    // Parse the input arguments
     while((option = getopt(argc , argv, "t:s:p:d:r:h")) != -1){
         switch(option){
 
@@ -289,10 +299,11 @@ int main(int argc, char *argv[]){
     IPK24_Client client(port, ip, protocol == "tcp" ? SOCK_STREAM : SOCK_DGRAM);
     // signal(SIGINT, signalHandler(client));
     globalClientPtr = &client;
-    
     signal(SIGINT, signalHandler);
     // client.connectTCP();
-
+    if(client.sock_protocol == SOCK_STREAM){
+        client.connectTCP();
+    }
     fd_set readfds;
     struct timeval tv;
     
@@ -301,7 +312,27 @@ int main(int argc, char *argv[]){
     tv.tv_usec = 0;
     
     
-    std::getline(std::cin, client.message);
+    if(!std::getline(std::cin, client.message)){
+        if(client.sock_protocol == SOCK_STREAM){
+            // TCP only sends BYE and exit
+            client.sendData("BYE\r\n");
+            
+        }else{ // UDP protocol must send BYE, receive confirmation and then exit.
+
+            std::vector<uint8_t> message;
+            message.push_back(0xFF); // Předpokládáme, že 0xFF je kód pro ukončení
+            message.push_back(static_cast<uint8_t>(client.messageID >> 8));
+            message.push_back(static_cast<uint8_t>(client.messageID & 0xFF));
+            client.sendDataUDP(message);
+            client.receiveConfirmation(client.messageID - 1, message);
+        
+        }
+        
+        // close the socket and exit succesfuly
+        exit(0);
+        
+        
+    }
     std::vector<std::string> inputParts = split(client.message);
     std::vector<std::string> reply;
     std::string command = inputParts[0];
@@ -309,24 +340,29 @@ int main(int argc, char *argv[]){
     int activity;
     int i = 0;
     while(true){
+
         switch ( client.state )
         {   
             case(Client_State::start):
+
                 stateStart(client, inputParts, command);
+                
                 break;
             case( Client_State::auth ):
+
                 if( protocol == "tcp" ){
                     caseAuth(client);
                 }else{
                     caseAuthUDP(client, inputParts);
                 }
+
                 break;
             case( Client_State::open ):
                 FD_ZERO(&readfds);
                 FD_SET(client.sock_fd, &readfds);
                 FD_SET(STDIN_FILENO, &readfds);
             
-                activity = select(std::max(client.sock_fd, STDIN_FILENO) + 1, &readfds, NULL, NULL, &tv);
+                activity = select(std::max(client.sock_fd, STDIN_FILENO) + 1, &readfds, NULL, NULL, &tv); // select between socket and stdin
 
                 // first check if there is something to read from the server
                 if(FD_ISSET(client.sock_fd, &readfds)){
@@ -357,15 +393,12 @@ int main(int argc, char *argv[]){
             break;
             
         case( Client_State::end ):
-            std::cout << "Success ENDDD" << std::endl;
-            //print success
-            // client.receiveConfirmation(client.messageID - 1);
-            // client.handleUDPincome();
-
-            if(client.sock_protocol == SOCK_STREAM){
+            
+            if(client.sock_protocol == SOCK_STREAM){ // TCP only sends BYE and exit
                 client.sendData("BYE\r\n");
                 
-            }else{
+            }else{ // UDP protocol must send BYE, receive confirmation and then exit.
+
                 std::vector<uint8_t> message;
                 message.push_back(0xFF); // Předpokládáme, že 0xFF je kód pro ukončení
                 message.push_back(static_cast<uint8_t>(client.messageID >> 8));
@@ -375,22 +408,13 @@ int main(int argc, char *argv[]){
             
             }
             
-            client.closeConnection();
+            client.closeConnection(); // close the socket and exit succesfuly
             exit(0);
             
-            // message.push_back(0xFF); // BYE typ
-            // message.push_back(static_cast<uint8_t>(client.messageID >> 8)); // Horní bajt
-            // message.push_back(static_cast<uint8_t>(client.messageID & 0xFF)); // Dolní bajt
-            // client.sendDataUDP(message);
-            // client.receiveConfirmation(client.messageID - 1);
-
-            // exit(0);
         case (Client_State::error):
             //print error
-            printf("Error\n");
-            client.sendData("BYE\r\n");
-            client.state = Client_State::end;
-            break;
+            exit(1);
+            
         }
 
 
