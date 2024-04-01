@@ -7,7 +7,7 @@
 #include <string.h>
 #include <sys/socket.h>
 #include <sys/types.h>
-
+#include <cctype>
 #include <netdb.h>
 #include <arpa/inet.h>
 #include <netinet/in.h>
@@ -30,7 +30,8 @@ enum class Client_State{
     auth,
     open,
     error,
-    end
+    end,
+    real_end
 };
 
 enum class Messages {
@@ -52,7 +53,7 @@ class IPK24_Client{
         
 
 
-        IPK24_Client(int port, std::string ip, int sock_protocol);
+        IPK24_Client(int port, std::string ip, int sock_protocol, int timeout, int retryCount);
         void sendJoin(std::vector<std::string> inputParts);
         void sendDataUDP(std::vector<uint8_t> message);
         void connectTCP();
@@ -64,6 +65,7 @@ class IPK24_Client{
             sendDataTCP(message);
             
         }
+        void sendBye();
         void handleTCPincome(std::vector<std::string> inputParts);
         std::vector<uint8_t> constructMessageUDP(uint8_t messageID, std::string message);
         void printUDPmessagge(std::string message);
@@ -96,9 +98,9 @@ class IPK24_Client{
         struct sockaddr *dyn_address;
         uint16_t messageID;
         bool replyReceived;
+        int timeout;
+        int retryCount;
         
-        
-    
     private:
 
 

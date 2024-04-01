@@ -16,7 +16,7 @@
  * 
  * @see Client_State
  */
-IPK24_Client::IPK24_Client(int port, std::string ip, int sock_protocol){
+IPK24_Client::IPK24_Client(int port, std::string ip, int sock_protocol, int timeout, int retryCount){
 
     if(port < 0 || port > 65535){
         printf("Invalid port\n");
@@ -25,10 +25,11 @@ IPK24_Client::IPK24_Client(int port, std::string ip, int sock_protocol){
     this->port = port;
     this->ip = ip;
     this->sock_protocol = sock_protocol;
-    std::array<char, 1024> buffer{0};
     this->state = Client_State::start;
     this->replyReceived = true;
     this->messageID = 0;
+    this->timeout = timeout;
+    this->retryCount = retryCount;
     
     // create a new socket
     this->sock_fd = socket(AF_INET, this->sock_protocol , 0);
@@ -69,6 +70,7 @@ IPK24_Client::IPK24_Client(int port, std::string ip, int sock_protocol){
 }
 
 
+
 /**
  * @brief Connects the client to the server using TCP protocol.
  * 
@@ -81,8 +83,8 @@ IPK24_Client::IPK24_Client(int port, std::string ip, int sock_protocol){
 void IPK24_Client::connectTCP(){
     int address_len = sizeof(this->server_address);
     int flags = 0;
-    int connection = connect(this->sock_fd, this->address, address_len);
-    if(connection < 0){
+    
+    if(connect(this->sock_fd, this->address, address_len) < 0){
         printf("Error connecting to server\n");
         exit(1);
     }
@@ -255,12 +257,12 @@ void IPK24_Client::printUDPmessagge(std::string message){
 */
 bool IPK24_Client::receiveConfirmation(uint16_t expectedMessageID, std::vector<uint8_t> message){
     
-    const int timeoutMs = 250;
+    const int timeoutMs = this->timeout;
     struct timeval tv;
     tv.tv_sec = 0;
     tv.tv_usec = 0; // Timeout for select
 
-    for(int i = 0; i < 3 ; i++){
+    for(int i = 0; i < this->retryCount; i++){
 
         // WHILE CURR TIME < 250MS,
         auto startTime = std::chrono::high_resolution_clock::now();
@@ -268,18 +270,19 @@ bool IPK24_Client::receiveConfirmation(uint16_t expectedMessageID, std::vector<u
             fd_set readfds;
             FD_ZERO(&readfds);
             FD_SET(this->sock_fd, &readfds);
-
-
             auto currentTime = std::chrono::high_resolution_clock::now();
+            
             auto elapsedTime = std::chrono::duration_cast<std::chrono::milliseconds>(currentTime - startTime).count();
             int remainingTime = timeoutMs - elapsedTime;
+            
             if (remainingTime <= 0) {
                 // Pokud jsme překročili 250 ms, přerušíme vnitřní smyčku a pokusíme se o další retransmisi
                 break;
             }
 
-            
             int activity = select(this->sock_fd + 1, &readfds, NULL, NULL, &tv);
+            
+            
             if (activity < 0) {
                 // Handle error
             } else if (activity == 0) {
@@ -300,7 +303,7 @@ bool IPK24_Client::receiveConfirmation(uint16_t expectedMessageID, std::vector<u
                         if(messageID == expectedMessageID){
                             return true;
                         }else{
-                            std::cout << "Message ID: " << messageID << std::endl;
+                            return false;
                         }
                         
                     }else{
@@ -317,8 +320,8 @@ bool IPK24_Client::receiveConfirmation(uint16_t expectedMessageID, std::vector<u
         sendDataUDP(message);
     }
 
-    std::cerr << "No confirmation received, connection lost.\n";
-    exit(1); // HANDLE !!
+    this->state = Client_State::end;
+    return false;
 }
 
 
@@ -518,9 +521,12 @@ void IPK24_Client::sendMessage(std::vector<std::string> inputParts){
 void IPK24_Client::handleTCPincome(std::vector<std::string> inputParts){
     this->receiveData();
     std::vector<std::string> reply = split(this->reply);
+    for (auto &c : reply[0]) {
+        c = std::toupper(static_cast<unsigned char>(c));
+    }
     if((reply[0] == "AUTH" || reply[0] == "JOIN"))
     {
-        this->sendData("ERROR FROM " + this->displayName + " IS " + join(inputParts) + "\r\n");
+        this->sendData("ERR FROM " + this->displayName + " IS " + join(inputParts) + "\r\n");
         this->state = Client_State::error;
 
     }
@@ -538,14 +544,36 @@ void IPK24_Client::handleTCPincome(std::vector<std::string> inputParts){
     if(reply[0] == "REPLY" && reply[1] == "OK"){
         this->replyReceived = true;
         return;
-    }else{
+    }else if ( reply[0] == "MSG"){
+        return;
+    }
+    else{
         std::cerr << "ERR: Invalid message" << std::endl;
-        this->sendData("ERROR FROM " + this->displayName + " IS " + join(inputParts) + "\r\n");
-        this->state = Client_State::error;
+        this->sendData("ERR FROM " + this->displayName + " IS " + join(inputParts) + "\r\n");
+        
     }
     return;
 }
 
+/**
+ * @brief Sends the Bye message to the server.
+ * Works for both UDP and TCP protocols.
+*/
+
+void IPK24_Client::sendBye(){
+    if(this->sock_protocol == SOCK_STREAM){ // TCP only sends BYE and exit
+        this->sendData("BYE\r\n");
+            
+    }else{ // UDP protocol must send BYE, receive confirmation and then exit.
+
+        std::vector<uint8_t> message;
+        message.push_back(0xFF); // Předpokládáme, že 0xFF je kód pro ukončení
+        message.push_back(static_cast<uint8_t>(this->messageID >> 8));
+        message.push_back(static_cast<uint8_t>(this->messageID & 0xFF));
+        this->sendDataUDP(message);
+        this->receiveConfirmation(this->messageID - 1, message);
+    }   
+}
 
 
 /**
@@ -637,6 +665,9 @@ void IPK24_Client::sendJoin(std::vector<std::string> inputParts){
  */
 void IPK24_Client::handleUDPincome(){
     std::string response = this->recieveDataUDP();
+    if(response.empty()){
+        return;
+    }
     uint8_t type = static_cast<uint8_t>(response[0]);
     uint16_t messageID = static_cast<uint16_t>(response[1]) << 8 | static_cast<uint16_t>(response[2]);
     
